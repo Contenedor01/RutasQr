@@ -1,0 +1,277 @@
+<html><head><base href="https://camerascannerapp.example.com/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escáner de Texto y Creador de Ruta QR</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 20px;
+        background-color: #f0f0f0;
+        box-sizing: border-box;
+      }
+      .container {
+        width: 50%;
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        overflow-y: auto;
+        max-height: none;
+        height: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .container::-webkit-scrollbar {
+        display: none;
+      }
+      h1, h2 {
+        color: #333;
+        text-align: center;
+      }
+      #videoContainer {
+        width: 100%;
+        height: 100px;
+        margin-bottom: 20px;
+        display: none;
+        overflow: hidden;
+      }
+      #video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 8px;
+      }
+      .button-container {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      button {
+        font-size: 1em;
+        padding: 10px 15px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      #resultContainer, #addressContainer {
+        width: 100%;
+        margin-bottom: 20px;
+      }
+      #resultText, .addressInput {
+        width: 100%;
+        margin-top: 10px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-sizing: border-box;
+      }
+      #resultText {
+        height: 150px;
+        resize: vertical;
+        display: none; /* Ocultar el cuadro de texto inicialmente */
+      }
+      .addressInput {
+        height: 40px;
+      }
+      #deactivateButton {
+        background-color: #f44336;
+      }
+      #deactivateButton:hover {
+        background-color: #d32f2f;
+      }
+      #createQRButton {
+        background-color: #2196F3;
+      }
+      #createQRButton:hover {
+        background-color: #1976D2;
+      }
+      #clearAddressesButton {
+        background-color: #FF9800;
+      }
+      #clearAddressesButton:hover {
+        background-color: #F57C00;
+      }
+      #qrCode {
+        margin-top: 20px;
+        text-align: center;
+      }
+      #qrCode img {
+        max-width: 100%;
+        height: auto;
+      }
+      .qr-buttons-container {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      @media (max-width: 768px) {
+        .container {
+          width: 90%;
+        }
+      }
+    </style>
+    </head>
+    <body>
+    <div class="container">
+      <h1>Generador de Código QR y Creador de Rutas</h1>
+      <div id="videoContainer">
+        <video id="video" autoplay playsinline></video>
+      </div>
+      <div class="button-container">
+        <button id="activateButton">Activar Cámara</button>
+        <button id="deactivateButton" style="display: none;">Desactivar Cámara</button>
+        <button id="scanButton" disabled>Escanear Texto</button>
+      </div>
+      <div id="resultContainer">
+        <textarea id="resultText" readonly placeholder="El texto escaneado aparecerá aquí"></textarea>
+      </div>
+    
+      <h2>Introduzca las direcciones para la ruta</h2>
+      <div id="addressContainer">
+       
+        <input type="text" class="addressInput" placeholder="Dirección 1" required>
+        <input type="text" class="addressInput" placeholder="Dirección 2">
+        <input type="text" class="addressInput" placeholder="Dirección 3">
+        <input type="text" class="addressInput" placeholder="Dirección 4">
+        <input type="text" class="addressInput" placeholder="Dirección 5">
+        <input type="text" class="addressInput" placeholder="Dirección 6">
+        <input type="text" class="addressInput" placeholder="Dirección 7">
+        <input type="text" class="addressInput" placeholder="Dirección 8">
+        <input type="text" class="addressInput" placeholder="Dirección 9">
+        <input type="text" class="addressInput" placeholder="Dirección 10">
+      </div>
+    
+      <div class="qr-buttons-container">
+        <button id="createQRButton">Crear Código QR</button>
+        <button id="clearAddressesButton">Borrar Direcciones</button>
+      </div>
+      <div id="qrCode"></div>
+    </div>
+    
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const video = document.getElementById('video');
+      const videoContainer = document.getElementById('videoContainer');
+      const activateButton = document.getElementById('activateButton');
+      const deactivateButton = document.getElementById('deactivateButton');
+      const scanButton = document.getElementById('scanButton');
+      const resultText = document.getElementById('resultText');
+      const createQRButton = document.getElementById('createQRButton');
+      const clearAddressesButton = document.getElementById('clearAddressesButton');
+      const qrCodeDiv = document.getElementById('qrCode');
+      const addressInputs = document.querySelectorAll('.addressInput');
+      let stream;
+    
+      async function startCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          video.srcObject = stream;
+          videoContainer.style.display = 'block';
+          scanButton.disabled = false;
+          activateButton.style.display = 'none';
+          deactivateButton.style.display = 'inline-block';
+          resultText.style.display = 'none'; // Ocultar el cuadro de texto al activar la cámara
+          resultText.value = ''; // Limpiar el contenido del cuadro de texto
+        } catch (err) {
+          console.error("Error al acceder a la cámara: ", err);
+          alert("No se pudo acceder a la cámara. Por favor, asegúrate de dar los permisos necesarios.");
+        }
+      }
+    
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+          videoContainer.style.display = 'none';
+          scanButton.disabled = true;
+          activateButton.style.display = 'inline-block';
+          deactivateButton.style.display = 'none';
+        }
+      }
+    
+      activateButton.addEventListener('click', startCamera);
+      deactivateButton.addEventListener('click', stopCamera);
+    
+      scanButton.addEventListener('click', async () => {
+        if (!stream) {
+          alert("La cámara no está activada. Por favor, actívala primero.");
+          return;
+        }
+    
+        scanButton.disabled = true;
+        scanButton.textContent = 'Escaneando...';
+    
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        try {
+          const result = await Tesseract.recognize(canvas, 'spa');
+          resultText.value = result.data.text;
+          resultText.style.display = 'block'; // Mostrar el cuadro de texto después de escanear
+          stopCamera(); // Desactivar el escáner después de mostrar el texto
+        } catch (error) {
+          console.error("Error al escanear: ", error);
+          resultText.value = "Error al escanear. Por favor, intenta de nuevo.";
+          resultText.style.display = 'block'; // Mostrar el cuadro de texto incluso en caso de error
+        } finally {
+          scanButton.disabled = false;
+          scanButton.textContent = 'Escanear Texto';
+        }
+      });
+    
+      createQRButton.addEventListener('click', () => {
+        const addresses = Array.from(addressInputs)
+          .map(input => input.value.trim())
+          .filter(address => address !== '');
+    
+        if (addresses.length === 0) {
+          alert('Por favor, introduce al menos una dirección.');
+          return;
+        }
+    
+        const origin = 'current+location';
+        const destination = encodeURIComponent(addresses.pop());
+        const waypoints = addresses.map(addr => encodeURIComponent(addr)).join('|');
+        
+        let mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+        if (waypoints) {
+          mapsUrl += `&waypoints=${waypoints}`;
+        }
+    
+        const qr = qrcode(0, 'M');
+        qr.addData(mapsUrl);
+        qr.make();
+    
+        qrCodeDiv.innerHTML = qr.createImgTag(5);
+      });
+    
+      clearAddressesButton.addEventListener('click', () => {
+        addressInputs.forEach(input => {
+          input.value = '';
+        });
+        qrCodeDiv.innerHTML = ''; // Limpiar el código QR si existe
+      });
+    });
+    </script>
+    </body></html>
